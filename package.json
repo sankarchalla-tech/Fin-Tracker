@@ -1,5 +1,27 @@
 {
+  "name": "fintrack",
+  "version": "1.0.0",
+  "description": "Financial Tracker - Track your finances together",
+  "private": true,
+  "workspaces": [
+    "fintrack-client",
+    "fintrack-server"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace=fintrack-client && npm run build --workspace=fintrack-server",
+    "build:client": "npm run build --workspace=fintrack-client",
+    "build:server": "npm run build --workspace=fintrack-server",
+    "install": "npm install && cd fintrack-client && npm install && cd ../fintrack-server && npm install",
+    "dev": "concurrently \"npm run dev --workspace=fintrack-client\" \"npm run dev --workspace=fintrack-server\"",
+    "dev:client": "npm run dev --workspace=fintrack-client",
+    "dev:server": "npm run dev --workspace=fintrack-server",
+    "start": "cd fintrack-server && npm start",
+    "db:push": "cd fintrack-server && npm run db:push",
+    "db:studio": "cd fintrack-server && npm run db:studio",
+    "monorepo": "npm run build:client && npm run build:server && cp -r fintrack-client/dist fintrack-server/client"
+  },
   "devDependencies": {
-    "@types/node": "^25.3.0"
+    "concurrently": "^9.1.0"
   }
+}
 }

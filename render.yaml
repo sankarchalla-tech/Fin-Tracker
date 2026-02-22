@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: fintrack
+    env: node
+    buildCommand: npm install && cd fintrack-client && npm install && npm run build && cd ../fintrack-server && npm install && npm run build
+    startCommand: cd fintrack-server && node dist/index.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: fintrack-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: FRONTEND_URL
+        value: https://fintrack.onrender.com
+databases:
+  - name: fintrack-db
+    databaseName: fintrack
+    user: fintrack_user
