@@ -1,13 +1,20 @@
 import { Router, Response } from 'express';
 import { db, schema } from '../db';
-import { eq, and, gte, lte, or, isNotNull } from 'drizzle-orm';
+import { eq, and, gte, lte, or, isNotNull, inArray } from 'drizzle-orm';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 
 const router = Router();
 
+async function getGroupMemberIds(groupId: string): Promise<string[]> {
+  const members = await db.select({ userId: schema.groupMembers.userId })
+    .from(schema.groupMembers)
+    .where(eq(schema.groupMembers.groupId, groupId));
+  return members.map(m => m.userId);
+}
+
 router.get('/summary', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
-    const { month, year, groupId } = req.query;
+    const { month, year, groupId, personal } = req.query;
     
     let startDate: string;
     let endDate: string;
@@ -34,13 +41,28 @@ router.get('/summary', authMiddleware, async (req: AuthRequest, res: Response) =
     
     let whereClause;
     
+    // If groupId is explicitly provided, show all group members' transactions
     if (groupId && typeof groupId === 'string') {
+      const memberIds = await getGroupMemberIds(groupId);
       whereClause = and(
-        eq(schema.transactions.groupId, groupId),
+        or(
+          eq(schema.transactions.groupId, groupId),
+          inArray(schema.transactions.userId, memberIds)
+        ),
         gte(schema.transactions.date, startDate),
         lte(schema.transactions.date, endDate)
       );
-    } else if (req.user!.currentGroupId) {
+    } 
+    // If personal mode is requested, only show user's own transactions
+    else if (personal === 'true' || !req.user!.currentGroupId) {
+      whereClause = and(
+        eq(schema.transactions.userId, req.user!.id),
+        gte(schema.transactions.date, startDate),
+        lte(schema.transactions.date, endDate)
+      );
+    }
+    // Otherwise, show both user's own and group transactions
+    else {
       whereClause = or(
         and(
           eq(schema.transactions.userId, req.user!.id),
@@ -52,12 +74,6 @@ router.get('/summary', authMiddleware, async (req: AuthRequest, res: Response) =
           gte(schema.transactions.date, startDate),
           lte(schema.transactions.date, endDate)
         )
-      );
-    } else {
-      whereClause = and(
-        eq(schema.transactions.userId, req.user!.id),
-        gte(schema.transactions.date, startDate),
-        lte(schema.transactions.date, endDate)
       );
     }
     
@@ -133,8 +149,12 @@ router.get('/category', authMiddleware, async (req: AuthRequest, res: Response) 
     let whereClause: any[];
     
     if (groupId && typeof groupId === 'string') {
+      const memberIds = await getGroupMemberIds(groupId);
       whereClause = [
-        eq(schema.transactions.groupId, groupId),
+        or(
+          eq(schema.transactions.groupId, groupId),
+          inArray(schema.transactions.userId, memberIds)
+        ),
         gte(schema.transactions.date, startDate),
         lte(schema.transactions.date, endDate),
       ];
@@ -218,8 +238,12 @@ router.get('/trends', authMiddleware, async (req: AuthRequest, res: Response) =>
     let whereClause;
     
     if (groupId && typeof groupId === 'string') {
+      const memberIds = await getGroupMemberIds(groupId);
       whereClause = and(
-        eq(schema.transactions.groupId, groupId),
+        or(
+          eq(schema.transactions.groupId, groupId),
+          inArray(schema.transactions.userId, memberIds)
+        ),
         gte(schema.transactions.date, startDate),
         lte(schema.transactions.date, endDate)
       );

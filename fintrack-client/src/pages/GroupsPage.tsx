@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, Users, Copy, RefreshCw, Trash2, LogOut, Crown, User as UserIcon, Check } from 'lucide-react';
+import { Plus, Users, Copy, RefreshCw, Trash2, LogOut, Crown, User as UserIcon, Check, Pencil, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -25,6 +25,7 @@ export default function GroupsPage() {
   const [selectedGroup, setSelectedGroup] = useState<GroupWithMembers | null>(null);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isJoinDialogOpen, setIsJoinDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [leaveConfirm, setLeaveConfirm] = useState<{ open: boolean; id: string }>({ open: false, id: '' });
   const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; id: string }>({ open: false, id: '' });
   const [formData, setFormData] = useState<GroupInput>({ name: '', description: '' });
@@ -159,6 +160,55 @@ export default function GroupsPage() {
     }
   };
 
+  const handleEditGroup = (group: GroupWithMembers) => {
+    setFormData({ name: group.name, description: group.description || '' });
+    setIsEditDialogOpen(true);
+  };
+
+  const handleUpdateGroup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedGroup) return;
+    
+    setErrors({});
+    const result = groupSchema.safeParse(formData);
+    if (!result.success) {
+      const fieldErrors: Partial<Record<keyof GroupInput, string>> = {};
+      result.error.issues.forEach((issue) => {
+        const field = issue.path[0] as keyof GroupInput;
+        fieldErrors[field] = issue.message;
+      });
+      setErrors(fieldErrors);
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await groupsApi.update(selectedGroup.id, formData);
+      toast.success('Group updated successfully');
+      setIsEditDialogOpen(false);
+      setSelectedGroup({ ...selectedGroup, ...formData });
+      fetchGroupsData();
+    } catch (error: any) {
+      const message = error.response?.data?.error || 'Failed to update group';
+      toast.error(message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleTransferOwnership = async (newOwnerId: string) => {
+    if (!selectedGroup) return;
+    try {
+      await groupsApi.transferOwnership(selectedGroup.id, newOwnerId);
+      toast.success('Ownership transferred successfully');
+      setSelectedGroup(null);
+      fetchGroupsData();
+    } catch (error: any) {
+      const message = error.response?.data?.error || 'Failed to transfer ownership';
+      toast.error(message);
+    }
+  };
+
   const handleRegenerateCode = async (groupId: string) => {
     try {
       const response = await groupsApi.regenerateCode(groupId);
@@ -263,7 +313,18 @@ export default function GroupsPage() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle>{selectedGroup.name}</CardTitle>
+                <div className="flex items-center gap-2">
+                  <CardTitle>{selectedGroup.name}</CardTitle>
+                  {selectedGroup.userRole === 'owner' && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleEditGroup(selectedGroup)}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
                 <CardDescription>{selectedGroup.description || 'No description'}</CardDescription>
               </div>
               <Button variant="ghost" size="sm" onClick={() => setSelectedGroup(null)}>
@@ -272,6 +333,15 @@ export default function GroupsPage() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="flex items-center gap-2 p-3 bg-primary/5 rounded-lg">
+              <Shield className="h-5 w-5 text-primary" />
+              <div>
+                <p className="text-sm font-medium">Your Role</p>
+                <p className="text-xs text-muted-foreground capitalize">
+                  {selectedGroup.userRole === 'owner' ? 'Admin (Owner)' : selectedGroup.userRole}
+                </p>
+              </div>
+            </div>
             <div>
               <Label className="text-sm text-muted-foreground">Invite Code</Label>
               <div className="flex items-center gap-2 mt-1">
@@ -304,14 +374,34 @@ export default function GroupsPage() {
                   <div key={member.id} className="flex items-center justify-between p-2 bg-muted rounded">
                     <div className="flex items-center gap-2">
                       <div className="h-8 w-8 rounded-full bg-secondary flex items-center justify-center">
-                        <UserIcon className="h-4 w-4" />
+                        {member.role === 'owner' ? (
+                          <Crown className="h-4 w-4 text-yellow-500" />
+                        ) : (
+                          <UserIcon className="h-4 w-4" />
+                        )}
                       </div>
                       <div>
                         <p className="font-medium text-sm">{member.name}</p>
                         <p className="text-xs text-muted-foreground">{member.email}</p>
                       </div>
                     </div>
-                    <span className="text-xs text-muted-foreground capitalize">{member.role}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground capitalize">
+                        {member.role === 'owner' ? 'Admin' : member.role}
+                      </span>
+                      {selectedGroup.userRole === 'owner' && 
+                       member.role !== 'owner' && 
+                       member.id !== user?.id && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleTransferOwnership(member.userId)}
+                          title="Transfer ownership"
+                        >
+                          <Crown className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -319,13 +409,22 @@ export default function GroupsPage() {
 
             <div className="flex gap-2 pt-4">
               {selectedGroup.userRole === 'owner' ? (
-                <Button
-                  variant="destructive"
-                  onClick={() => setDeleteConfirm({ open: true, id: selectedGroup.id })}
-                >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Delete Group
-                </Button>
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={() => handleEditGroup(selectedGroup)}
+                  >
+                    <Pencil className="h-4 w-4 mr-2" />
+                    Edit Group
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={() => setDeleteConfirm({ open: true, id: selectedGroup.id })}
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete Group
+                  </Button>
+                </>
               ) : (
                 <Button
                   variant="outline"
@@ -443,6 +542,53 @@ export default function GroupsPage() {
         onConfirm={handleDelete}
         variant="destructive"
       />
+
+      <Dialog open={isEditDialogOpen} onOpenChange={(open) => { setIsEditDialogOpen(open); if (!open) setErrors({}); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Group</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleUpdateGroup} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-name">Name</Label>
+              <Input
+                id="edit-name"
+                placeholder="Group name"
+                value={formData.name}
+                onChange={(e) => handleChange('name', e.target.value)}
+                disabled={isSubmitting}
+                className={errors.name ? 'border-destructive' : ''}
+              />
+              {errors.name && <p className="text-sm text-destructive">{errors.name}</p>}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-description">Description (optional)</Label>
+              <Input
+                id="edit-description"
+                placeholder="Group description"
+                value={formData.description}
+                onChange={(e) => handleChange('description', e.target.value)}
+                disabled={isSubmitting}
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)} disabled={isSubmitting}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? (
+                  <span className="flex items-center gap-2">
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                    Saving...
+                  </span>
+                ) : (
+                  'Save Changes'
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

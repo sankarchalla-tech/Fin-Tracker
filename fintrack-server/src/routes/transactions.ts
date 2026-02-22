@@ -1,10 +1,17 @@
 import { Router, Response } from 'express';
 import { db, schema } from '../db';
-import { eq, and, gte, lte, desc, or, isNull } from 'drizzle-orm';
+import { eq, and, gte, lte, desc, or, isNull, inArray } from 'drizzle-orm';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { createTransactionSchema, updateTransactionSchema, transactionFilterSchema } from '../types/validations';
 
 const router = Router();
+
+async function getGroupMemberIds(groupId: string): Promise<string[]> {
+  const members = await db.select({ userId: schema.groupMembers.userId })
+    .from(schema.groupMembers)
+    .where(eq(schema.groupMembers.groupId, groupId));
+  return members.map(m => m.userId);
+}
 
 router.get('/', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
@@ -25,7 +32,14 @@ router.get('/', authMiddleware, async (req: AuthRequest, res: Response) => {
         return res.status(403).json({ error: 'Not a member of this group' });
       }
 
-      conditions.push(eq(schema.transactions.groupId, filters.groupId));
+      // Show all group members' transactions
+      const memberIds = await getGroupMemberIds(filters.groupId);
+      conditions.push(
+        or(
+          eq(schema.transactions.groupId, filters.groupId),
+          inArray(schema.transactions.userId, memberIds)
+        )
+      );
     } else {
       if (req.user!.currentGroupId) {
         conditions.push(

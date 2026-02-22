@@ -7,6 +7,8 @@ import {
   CreditCard,
   ArrowUpRight,
   ArrowDownRight,
+  User,
+  Users,
 } from 'lucide-react';
 import {
   BarChart,
@@ -31,8 +33,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
 import { dashboardApi, transactionsApi } from '@/lib/api';
 import { formatCurrency, formatMonth } from '@/lib/utils';
+import { useAuthStore } from '@/stores/authStore';
 import type { DashboardSummary, CategoryBreakdown, MonthlyTrend, Transaction } from '@/types';
 
 const COLORS = ['#22c55e', '#ef4444', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
@@ -53,9 +57,11 @@ const months = [
 ];
 
 export default function DashboardPage() {
+  const { user } = useAuthStore();
   const now = new Date();
   const [selectedMonth, setSelectedMonth] = useState(String(now.getMonth() + 1).padStart(2, '0'));
   const [selectedYear, setSelectedYear] = useState(String(now.getFullYear()));
+  const [viewMode, setViewMode] = useState<'group' | 'personal'>('personal');
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [categoryBreakdown, setCategoryBreakdown] = useState<CategoryBreakdown[]>([]);
   const [trends, setTrends] = useState<MonthlyTrend[]>([]);
@@ -63,17 +69,25 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true);
 
   const years = Array.from({ length: 5 }, (_, i) => String(now.getFullYear() - i));
+  const hasGroup = !!user?.currentGroupId;
 
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
       try {
         const month = `${selectedYear}-${selectedMonth}`;
+        const groupIdParam = viewMode === 'group' && hasGroup && user?.currentGroupId 
+          ? user.currentGroupId 
+          : undefined;
+        const params = { month, groupId: groupIdParam };
+        const trendParams = { year: selectedYear, groupId: groupIdParam };
+        const transactionParams: Record<string, string | undefined> = { month, limit: '5', groupId: groupIdParam };
+        
         const [summaryRes, categoryRes, trendsRes, transactionsRes] = await Promise.all([
-          dashboardApi.getSummary({ month }),
-          dashboardApi.getCategoryBreakdown({ month }),
-          dashboardApi.getTrends({ year: selectedYear }),
-          transactionsApi.getAll({ month, limit: '5' }),
+          dashboardApi.getSummary(params),
+          dashboardApi.getCategoryBreakdown(params),
+          dashboardApi.getTrends(trendParams),
+          transactionsApi.getAll(transactionParams),
         ]);
         setSummary(summaryRes.data);
         setCategoryBreakdown(categoryRes.data);
@@ -87,7 +101,7 @@ export default function DashboardPage() {
     };
 
     fetchData();
-  }, [selectedMonth, selectedYear]);
+  }, [selectedMonth, selectedYear, viewMode, user?.currentGroupId, hasGroup]);
 
   const summaryCards = [
     {
@@ -130,7 +144,31 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <h1 className="text-2xl font-bold">Dashboard</h1>
+        <div className="flex items-center gap-4">
+          <h1 className="text-2xl font-bold">Dashboard</h1>
+          {hasGroup && (
+            <div className="flex items-center border rounded-lg p-1">
+              <Button
+                variant={viewMode === 'personal' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setViewMode('personal')}
+                className="gap-2"
+              >
+                <User className="h-4 w-4" />
+                Personal
+              </Button>
+              <Button
+                variant={viewMode === 'group' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setViewMode('group')}
+                className="gap-2"
+              >
+                <Users className="h-4 w-4" />
+                Group
+              </Button>
+            </div>
+          )}
+        </div>
         <div className="flex gap-2">
           <Select value={selectedMonth} onValueChange={setSelectedMonth}>
             <SelectTrigger className="w-[140px]">
@@ -207,6 +245,8 @@ export default function DashboardPage() {
                       />
                       <Bar dataKey="income" fill="#22c55e" name="Income" />
                       <Bar dataKey="expense" fill="#ef4444" name="Expense" />
+                      <Bar dataKey="investment" fill="#3b82f6" name="Investment" />
+                      <Bar dataKey="emi" fill="#f59e0b" name="EMI" />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -215,7 +255,7 @@ export default function DashboardPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Expense Breakdown</CardTitle>
+                <CardTitle className="text-lg">Category Breakdown</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="h-[300px]">
@@ -240,7 +280,7 @@ export default function DashboardPage() {
                     </ResponsiveContainer>
                   ) : (
                     <div className="flex items-center justify-center h-full text-muted-foreground">
-                      No expense data for this period
+                      No transactions for this period
                     </div>
                   )}
                 </div>
@@ -249,7 +289,7 @@ export default function DashboardPage() {
 
             <Card className="lg:col-span-2">
               <CardHeader>
-                <CardTitle className="text-lg">Income vs Expense Trend</CardTitle>
+                <CardTitle className="text-lg">Monthly Trends</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="h-[300px]">
@@ -279,6 +319,20 @@ export default function DashboardPage() {
                         dataKey="expense"
                         stroke="#ef4444"
                         name="Expense"
+                        strokeWidth={2}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="investment"
+                        stroke="#3b82f6"
+                        name="Investment"
+                        strokeWidth={2}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="emi"
+                        stroke="#f59e0b"
+                        name="EMI"
                         strokeWidth={2}
                       />
                     </LineChart>
