@@ -23,7 +23,7 @@ export const transactionSchema = z.object({
     return !isNaN(num) && num > 0;
   }, 'Amount must be greater than 0'),
   type: z.enum(['income', 'expense', 'investment', 'emi']),
-  categoryId: z.string().nullable(),
+  categoryId: z.string().optional().nullable(),
   description: z.string().max(500, 'Description is too long').optional(),
   date: z.string().min(1, 'Date is required'),
   isRecurring: z.boolean().optional(),

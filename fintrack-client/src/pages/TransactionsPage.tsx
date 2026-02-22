@@ -104,7 +104,7 @@ export default function TransactionsPage() {
         amount: formData.amount,
         type: formData.type,
         categoryId: formData.categoryId || null,
-        description: formData.description,
+        description: formData.description || undefined,
         date: formData.date,
         isRecurring: formData.isRecurring,
       };
@@ -120,7 +120,9 @@ export default function TransactionsPage() {
       setIsDialogOpen(false);
       resetForm();
       fetchData();
-    } catch (error) {
+    } catch (error: any) {
+      const message = error.response?.data?.error || 'Failed to save transaction';
+      toast.error(message);
       console.error('Failed to save transaction:', error);
     } finally {
       setIsSubmitting(false);
@@ -333,18 +335,25 @@ export default function TransactionsPage() {
             <div className="space-y-2">
               <Label>Category</Label>
               <Select
-                value={formData.categoryId || undefined}
-                onValueChange={(value) => handleChange('categoryId', value)}
+                value={formData.categoryId || ''}
+                onValueChange={(value) => handleChange('categoryId', value === '_none' ? '' : value)}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select category" />
+                  <SelectValue placeholder={filteredCategories.length === 0 ? "No categories available" : "Select category"} />
                 </SelectTrigger>
                 <SelectContent>
-                  {filteredCategories.map((category) => (
-                    <SelectItem key={category.id} value={category.id}>
-                      {category.name}
-                    </SelectItem>
-                  ))}
+                  {filteredCategories.length === 0 ? (
+                    <div className="px-2 py-4 text-sm text-muted-foreground text-center">
+                      No categories for this type.<br />
+                      Add them in the Categories page.
+                    </div>
+                  ) : (
+                    filteredCategories.map((category) => (
+                      <SelectItem key={category.id} value={category.id}>
+                        {category.name}
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
             </div>
